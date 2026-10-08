@@ -2,23 +2,23 @@
 # Licensed under the MIT license.
 
 import uuid
-from typing import cast
+from typing import Any, Dict, cast
 
 from assertpy import assert_that
 from microsoft.testsuites.vm_extensions.runtime_extensions.common import (
     create_and_verify_vmaccess_extension_run,
 )
+from microsoft.testsuites.vm_extensions.vm_extension_base import VmExtensionTestBase
 
 from lisa import (
     Logger,
     Node,
     RemoteNode,
     TestCaseMetadata,
-    TestSuite,
     TestSuiteMetadata,
     simple_requirement,
 )
-from lisa.operating_system import BSD, CBLMariner, Ubuntu
+from lisa.operating_system import BSD, CBLMariner, Ubuntu, Windows
 from lisa.secret import add_secret
 from lisa.sut_orchestrator import AZURE
 from lisa.sut_orchestrator.azure.features import AzureExtension
@@ -155,7 +155,8 @@ def _validate_account_expiration_date(
     Settings are protected unless otherwise mentioned.
     OpenSSH format public keys correspond to ssh-rsa keys.
 
-    It has 8 test cases to verify if VMAccess runs successfully when provided:
+    In addition to boot validation, it has 8 test cases to verify if VMAccess
+    runs successfully when provided:
         1. Username and password
         2. Username and OpenSSH format public key
         3. Username with both a password and OpenSSH format public key
@@ -165,14 +166,53 @@ def _validate_account_expiration_date(
         7. Username to remove
         8. Username, OpenSSH format public key, and valid expiration date
     """,
-    tags=["VM_Extension"],
+    tags=["VM_Extension", "VMAccessForLinux"],
     requirement=simple_requirement(
         supported_features=[AzureExtension],
         supported_platform_type=[AZURE],
         unsupported_os=[BSD],
     ),
 )
-class VMAccessTests(TestSuite):
+class VMAccessTests(VmExtensionTestBase):  # type: ignore[misc]
+    PUBLISHER = "Microsoft.OSTCExtensions"
+    EXTENSION_TYPE = "VMAccessForLinux"
+    EXTENSION_KEY = "vmaccess"
+
+    @TestCaseMetadata(
+        description="""
+        Basic boot validation for the VMAccess for Linux VM extension.
+
+        Installs the explicitly requested candidate version with empty public
+        settings and no protected settings. Verifies that extension provisioning
+        succeeds, the installed patch version matches when a full version is
+        supplied, and the VM remains reachable before removing the extension.
+
+        No user-account changes, SSH resets, or disk checks/repairs are requested.
+        The handler may still update its baseline SSH configuration. Password
+        reset and SSH key injection are covered by the existing functional cases.
+
+        The candidate version is read from the 'extension_version' or
+        'vmaccess_version' runbook variable.
+        """,
+        priority=5,
+        requirement=simple_requirement(
+            supported_features=[AzureExtension],
+            supported_platform_type=[AZURE],
+            unsupported_os=[BSD, Windows],
+        ),
+        tags=["microsoft.ostcextensions.vmaccessforlinux"],
+        maturity="preview",
+    )
+    def microsoft_ostcextensions_vmaccessforlinux_boot_validation_test(
+        self, log: Logger, node: Node, variables: Dict[str, Any]
+    ) -> None:
+        self._boot_validation(
+            node=node,
+            log=log,
+            variables=variables,
+            settings={},
+        )
+
     @TestCaseMetadata(
         description="""
         Runs the VMAccess VM extension with a valid username and password.
